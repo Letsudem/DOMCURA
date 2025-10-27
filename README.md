@@ -6,7 +6,7 @@ Für: DOMCURA AG
 ---
 
 
-## mein neuen Job als Mathematik im Bereich Produktmanager
+## Mathematik im Bereich Produktmanager
 
 * Entwicklung risiko- und marktgerechter Neugeschäftstarife sowie Überprüfung und Sicherstellung der Auskömmlichkeit der Tarife des Produktportfolios inklusive Ableitung konkreter Handlungsempfehlungen zur Entscheidungsfindung für die Unternehmensverantwortlichen
 * Aufbau und Weiterentwicklung des aktuariellen Controllings mit den Schwerpunkten Berichtswesen und Dashboards
