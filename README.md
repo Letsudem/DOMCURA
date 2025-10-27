@@ -1,17 +1,15 @@
 ---
 title: "README.md"
-author: "Serges Letsudem Wonanke"
-date: "2025-10-27"
-output: html_document
+Erfasser: "Serges Letsudem Wonanke"
+Datum: "2025-11-06"
+Für: DOMCURA AG
 ---
 
-```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
-```
 
-## R Markdown
+## mein neuen Job als Mathematik im Bereich Produktmanager
 
-This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
-
-When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
-
+* Entwicklung risiko- und marktgerechter Neugeschäftstarife sowie Überprüfung und Sicherstellung der Auskömmlichkeit der Tarife des Produktportfolios inklusive Ableitung konkreter Handlungsempfehlungen zur Entscheidungsfindung für die Unternehmensverantwortlichen
+* Aufbau und Weiterentwicklung des aktuariellen Controllings mit den Schwerpunkten Berichtswesen und Dashboards
+* Durchführung regelmäßiger Reportings und Portfolioanalysen
+* Erstellung von Präsentationen u.a. für Jahresgespräche und Verhandlungen mit Produktpartnern sowie für Aufsichtsratssitzungen
+* Durchführung von ad hoc-Analysen und -Auswertungen
