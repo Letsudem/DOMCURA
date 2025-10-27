@@ -1,0 +1,601 @@
+Résumé synthétique
+
+| Package    | Domaine principal        | Exemple d’usage        |
+| ---------- | ------------------------ | ---------------------- |
+| data.table | Manipulation rapide      | jointures, agrégations |
+| dplyr      | Manipulation lisible     | pipelines tidyverse    |
+| tidyr      | Restructuration          | pivot, separate        |
+| ggplot2    | Visualisation            | graphiques             |
+| lubridate  | Dates & heures           | extraire années, mois  |
+| DBI        | Connexion BDD            | interface SQL          |
+| RSQLite    | Base locale              | SQLite `.db`           |
+| broom      | Résumés de modèles       | tidy(model)            |
+| tweedie    | Distribution actuarielle | modèles de sinistres   |
+| statmod    | Outils statistiques      | support Tweedie        |
+
+
+🧩 Minimaler Kerndatenbestand (typisch Komposit / Assekuradeur / MGA)
+1. policen.csv
+
+Informationen über jede Versicherungspolice
+
+| Feld            | Beschreibung                                                  |
+| --------------- | ------------------------------------------------------------- |
+| `policy_id`     | Eindeutige Vertragsnummer / Policen-ID                        |
+| `product`       | Produktart (z. B. Wohngebäude, Hausrat, Kfz, Haftpflicht)     |
+| `partner`       | Vertriebspartner oder Assekuradeurspartner                    |
+| `start_date`    | Vertragsbeginn                                                |
+| `end_date`      | Vertragsende                                                  |
+| `state`         | Status der Police (z. B. *aktiv*, *gekündigt*, *auto_issued*) |
+| `sum_insured`   | Versicherungssumme                                            |
+| `deductible`    | Selbstbeteiligung                                             |
+| `channel`       | Vertriebskanal (z. B. Makler, Direkt, Vergleichsportal)       |
+| `premium_gross` | Bruttoprämie inkl. Steuern                                    |
+| `premium_net`   | Nettoprämie (ohne Steuern, vor Kosten)                        |
+
+2. exposures.csv
+
+Abgebildete Versicherungszeiträume und verdiente Prämien
+| Feld                 | Beschreibung                                 |
+| -------------------- | -------------------------------------------- |
+| `policy_id`          | Verweis auf Police                           |
+| `period`             | Abrechnungsperiode (z. B. Jahr oder Monat)   |
+| `earned_exposure`    | Verdiente Risikoeinheiten (z. B. 1 pro Jahr) |
+| `earned_premium_net` | Verdiente Nettoprämie im Zeitraum            |
+
+3. claims.csv
+
+Schadendaten mit Zahlungsverläufen und Reserven
+| Feld              | Beschreibung                                              |
+| ----------------- | --------------------------------------------------------- |
+| `claim_id`        | Eindeutige Schadennummer                                  |
+| `policy_id`       | Zugehörige Police                                         |
+| `loss_date`       | Schadeneintrittsdatum                                     |
+| `report_date`     | Meldedatum                                                |
+| `paid`            | Bis heute gezahlte Schadenleistung                        |
+| `reserve`         | Aktuelle Schadenrückstellung                              |
+| `status`          | Status (*Open*, *Closed*, *Reopened*)                     |
+| `cause`           | Schadenursache (z. B. Feuer, Leitungswasser, Haftpflicht) |
+| `peril`           | Gefahrengruppe (z. B. Sturm, Hagel, Glasbruch, Kasko)     |
+| `settlement_date` | Abschlussdatum der Schadenregulierung                     |
+
+📊 Zentrale Kennzahlen (KPIs)
+| Kennzahl                        | Formel                                                            | Bedeutung                                              |
+| ------------------------------- | ----------------------------------------------------------------- | ------------------------------------------------------ |
+| **Loss Ratio**                  | `Incurred / Earned Premium`<br>(mit `Incurred = Paid + ReserveΔ`) | Verhältnis der Schadenkosten zu den verdienten Prämien |
+| **Pure Premium / Burning Cost** | `Incurred / Exposure`                                             | Reine Schadenskosten je Risikoeinheit                  |
+| **Combined Ratio**              | `Loss Ratio + Expense Ratio` *(falls Kostenanteil verfügbar)*     | Gesamtquote aus Schaden- und Kostenbelastung           |
+| **Frequency**                   | `#Schäden / Exposure`                                             | Schadenhäufigkeit                                      |
+| **Severity**                    | `Incurred / #Schäden`                                             | Durchschnittliche Schadenhöhe                          |
+
+5. market_benchmark.csv (optional)
+
+Externe Markt- oder Wettbewerbsdaten zur Kalibrierung
+| Feld            | Beschreibung                                  |
+| --------------- | --------------------------------------------- |
+| `product`       | Produktkategorie                              |
+| `competitor`    | Wettbewerbername                              |
+| `date`          | Referenzzeitpunkt                             |
+| `gross_premium` | Durchschnittliche Bruttoprämie oder Indexwert |
+
+4. tariff_factors.csv
+
+Tarifmerkmale für Pricing, Scoring oder Risikoanalyse
+| Feld           | Beschreibung                                                                             |
+| -------------- | ---------------------------------------------------------------------------------------- |
+| `policy_id`    | Verweis auf Police                                                                       |
+| `factor_name`  | Bezeichnung des Merkmals (z. B. *Gebäudeart*, *PLZ-Zone*, *SF-Klasse*, *Regionalklasse*) |
+| `factor_level` | Ausprägung des Merkmals (z. B. *Einfamilienhaus*, *Zone 3*, *SF 11–20*)                  |
+
+
+Datenmodell (Annahme)
+
+Minimaler Kern (typisch Komposit/MGA):
+
+policies(policy_id, product, partner, start_date, end_date, state, sum_insured, deductible, channel, premium_gross, premium_net)
+
+exposures(policy_id, period, earned_exposure, earned_premium_net)
+
+claims(claim_id, policy_id, loss_date, report_date, paid, reserve, status, cause, peril, settlement_date)
+
+tariff_factors(policy_id, factor_name, factor_level) (z. B. Gebäudeart, PLZ-Zone, SF-Klasse etc.)
+
+market_benchmark(product, competitor, date, gross_premium) (optional)
+
+KPIs:
+
+Loss Ratio = Incurred/Earned Premium (Incurred = Paid + Reserve Δ)
+
+Pure Premium/Burning Cost = Incurred / Exposure
+
+Combined Ratio ≈ Loss Ratio + Expense Ratio (falls verfügbar)
+
+1) Entwicklung risiko- & marktgerechter Neugeschäftstarife + Auskömmlichkeit prüfen
+
+SQL – Basis: Frequenz/Schadenhöhe, Burning Cost, Indikation je Faktor
+
+-- 1) Frequenz und Schwere je Tarifmerkmal (Beispiel: Gebäude_baujahr_klasse)
+WITH base AS (
+  SELECT
+    p.product,
+    tf.factor_level AS baujahr_klasse,
+    SUM(e.earned_exposure) AS exp,
+    SUM(e.earned_premium_net) AS ep_net,
+    SUM(c.paid + COALESCE(c.reserve,0)) AS incurred
+  FROM policies p
+  JOIN exposures e USING (policy_id)
+  LEFT JOIN claims c USING (policy_id)
+  JOIN tariff_factors tf ON tf.policy_id=p.policy_id AND tf.factor_name='baujahr_klasse'
+  WHERE p.product='Wohngebaeude' AND e.period BETWEEN DATE '2023-01-01' AND DATE '2024-12-31'
+  GROUP BY 1,2
+),
+metrics AS (
+  SELECT
+    product, baujahr_klasse,
+    exp,
+    ep_net,
+    incurred,
+    incurred/NULLIF(exp,0) AS pure_premium,
+    incurred/NULLIF(ep_net,0) AS loss_ratio
+  FROM base
+)
+SELECT * FROM metrics
+ORDER BY loss_ratio DESC;
+
+-- 2) Marktabgleich (einfacher Preisanker über Benchmark)
+SELECT m.competitor, m.gross_premium AS market_gross,
+       p.product, p.premium_gross AS our_gross,
+       (p.premium_gross - m.gross_premium)/m.gross_premium AS price_gap
+FROM market_benchmark m
+JOIN policies p ON p.product=m.product
+WHERE p.product='Wohngebaeude'
+  AND m.date = (SELECT MAX(date) FROM market_benchmark WHERE product='Wohngebaeude');
+
+Python – GLM/Tweedie für Indikationsraten (Frequency×Severity in einem Schritt)
+
+import pandas as pd, numpy as np
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import OneHotEncoder
+from sklearn.compose import ColumnTransformer
+from sklearn.pipeline import Pipeline
+from sklearn.metrics import mean_absolute_error
+from sklearn.linear_model import TweedieRegressor
+
+# df: Policy-Claim-Level mit Spalten: 'earned_exposure','earned_premium_net','claim_cost','baujahr_klasse',...
+# Ziel = Pure Premium (Schadenkosten je Exposure-Äquivalent)
+df = df_raw.copy()
+df['target_pureprem'] = df['claim_cost'] / df['earned_exposure'].clip(lower=1e-6)
+
+cat = ['baujahr_klasse','plz_zone','dachart','nutzung']
+num = ['sum_insured','deductible']
+
+X = df[cat+num]
+y = df['target_pureprem'].values
+
+pre = ColumnTransformer([
+    ('ohe', OneHotEncoder(handle_unknown='ignore'), cat),
+    ('pass', 'passthrough', num)
+])
+
+# Tweedie mit log-Link (power ~1.5 ist Tweedie-kompatibel für zero-inflated severity)
+pipe = Pipeline([
+    ('prep', pre),
+    ('mdl', TweedieRegressor(power=1.5, alpha=1e-4, link='log', max_iter=500))
+])
+
+X_tr, X_te, y_tr, y_te = train_test_split(X, y, test_size=0.2, random_state=42)
+pipe.fit(X_tr, y_tr)
+pred = pipe.predict(X_te)
+print("MAE:", mean_absolute_error(y_te, pred))
+
+# Indikationsrate (Netto) = PurePremium * Sicherheitszuschlag + Kosten + Zielmarge
+safety_load = 1.05
+expense_ratio = 0.25
+target_margin = 0.05
+
+df['indicated_pureprem'] = pipe.predict(X) * safety_load
+df['indicated_net'] = df['indicated_pureprem'] * (1 + expense_ratio + target_margin)
+
+Hinweis für Interview: Begründe Tweedie-Wahl (gemeinsame Modellierung Frequency/Severity, viele Nullen, rechts-schief).
+Ergänze Fairness/Robustheit (Target-Leakage vermeiden, Zeit-Split, Kalibrierung).
+
+2) Aktuarielles Controlling: Berichtswesen & Dashboards
+SQL – Monatsreport Loss Ratio / Drilling per Produkt & Partner
+
+WITH inc AS (
+  SELECT date_trunc('month', c.loss_date) AS mon, p.product, p.partner,
+         SUM(c.paid + COALESCE(c.reserve,0)) AS incurred
+  FROM claims c JOIN policies p USING(policy_id)
+  WHERE c.loss_date >= DATE '2023-01-01'
+  GROUP BY 1,2,3
+),
+prem AS (
+  SELECT date_trunc('month', e.period) AS mon, p.product, p.partner,
+         SUM(e.earned_premium_net) AS ep_net
+  FROM exposures e JOIN policies p USING(policy_id)
+  WHERE e.period >= DATE '2023-01-01'
+  GROUP BY 1,2,3
+)
+SELECT i.mon, i.product, i.partner,
+       ep_net, incurred,
+       incurred/NULLIF(ep_net,0) AS loss_ratio
+FROM inc i
+JOIN prem p USING (mon, product, partner)
+ORDER BY i.mon DESC, loss_ratio DESC;
+
+Python – Dashboard-Kern (KPIs + einfache Charts)
+import pandas as pd, matplotlib.pyplot as plt
+
+# df_month: Spalten ['mon','product','partner','ep_net','incurred']
+df_month['loss_ratio'] = df_month['incurred'] / df_month['ep_net'].replace(0, pd.NA)
+
+kpi = df_month.groupby('product', as_index=False).agg(
+    ep_net=('ep_net','sum'),
+    incurred=('incurred','sum')
+)
+kpi['loss_ratio'] = kpi['incurred']/kpi['ep_net']
+
+print(kpi.sort_values('loss_ratio', ascending=False).head(10))
+
+# Zeitreihe Loss Ratio Produkt X
+prod = 'Wohngebaeude'
+ts = df_month[df_month['product']==prod].groupby('mon', as_index=False).agg(
+    ep=('ep_net','sum'), inc=('incurred','sum')
+)
+ts['lr'] = ts['inc']/ts['ep']
+
+plt.figure()
+plt.plot(ts['mon'], ts['lr'])
+plt.title(f'Loss Ratio Zeitreihe – {prod}')
+plt.xlabel('Monat'); plt.ylabel('Loss Ratio')
+plt.tight_layout(); plt.show()
+
+3) Regelmäßige Reportings & Portfolioanalysen
+SQL – Kohorten & Persistenz (Neugeschäfts-Jahrgänge)
+
+SELECT
+  EXTRACT(YEAR FROM p.start_date) AS uw_year,
+  p.product,
+  COUNT(DISTINCT p.policy_id) AS policen,
+  SUM(e.earned_premium_net) AS ep_net,
+  SUM(c.paid + COALESCE(c.reserve,0)) AS incurred,
+  (SUM(c.paid + COALESCE(c.reserve,0)) / NULLIF(SUM(e.earned_premium_net),0)) AS loss_ratio
+FROM policies p
+JOIN exposures e USING (policy_id)
+LEFT JOIN claims c USING (policy_id)
+GROUP BY 1,2
+ORDER BY uw_year DESC, loss_ratio DESC;
+
+Python – Segment-Heatmap & Drivertests
+
+import pandas as pd, numpy as np
+
+# Segmentierung über 2–3 Schlüsselfaktoren
+seg = df_raw.groupby(['product','plz_zone','baujahr_klasse'], as_index=False).agg(
+    ep=('earned_premium_net','sum'),
+    inc=('claim_cost','sum'),
+    exp=('earned_exposure','sum')
+)
+seg['lr'] = seg['inc'] / seg['ep'].replace(0, np.nan)
+seg['pure'] = seg['inc'] / seg['exp'].replace(0, np.nan)
+
+# Top-Risiken
+print(seg.sort_values('lr', ascending=False).head(15))
+
+# Einfache Indikationsformel
+safety = 1.03; expense=0.24; margin=0.04
+seg['indicated_net'] = (seg['pure']*safety) * (1+expense+margin)
+
+4) Präsentationen (Jahresgespräche/Partner/AR-Sitzungen)
+SQL – Partner-Factsheet
+
+SELECT p.partner, p.product,
+       SUM(e.earned_premium_net) AS ep_net,
+       SUM(c.paid + COALESCE(c.reserve,0)) AS incurred,
+       AVG(p.deductible) AS avg_deductible,
+       SUM(CASE WHEN c.status='Closed' THEN 1 ELSE 0 END)::float/NULLIF(COUNT(c.claim_id),0) AS close_rate
+FROM policies p
+JOIN exposures e USING(policy_id)
+LEFT JOIN claims c USING(policy_id)
+GROUP BY 1,2
+ORDER BY ep_net DESC;
+
+Python – Export Folien (optional, falls gewünscht)
+
+from pptx import Presentation
+from pptx.util import Inches
+
+prs = Presentation()
+title = prs.slides.add_slide(prs.slide_layouts[0])
+title.shapes.title.text = "DOMCURA – Portfolioüberblick"
+title.placeholders[1].text = "Aktuar/Produktmanagement – Quartal X"
+
+slide = prs.slides.add_slide(prs.slide_layouts[5])
+tf = slide.shapes.add_textbox(Inches(0.5), Inches(1.0), Inches(9), Inches(5)).text_frame
+tf.text = "Kern-KPIs:\n• Loss Ratio gesamt\n• Top-3 Risikotreiber\n• Maßnahmen & Tarifindikation"
+
+prs.save("Domcura_Report.pptx")
+print("Export: Domcura_Report.pptx")
+
+5) Ad-hoc-Analysen (Beispiele)
+5a) Rate-Change-Impact (Preisänderung x Elastizität ⇒ EP/Schadenwirkung)
+
+import numpy as np, pandas as pd
+
+# df_quotes: ['segment','current_rate','quoted_premium','bind_prob']  (bind_prob aus historischem Logit)
+uplift = 0.05  # +5% Rate
+price_elasticity = -0.8  # Annahme
+
+df_quotes['new_rate'] = df_quotes['quoted_premium']*(1+uplift)
+df_quotes['new_bind'] = df_quotes['bind_prob'] * (1 + price_elasticity*uplift)
+df_quotes['new_bind'] = df_quotes['new_bind'].clip(0,1)
+
+# EP-Effekt
+ep_now = (df_quotes['quoted_premium'] * df_quotes['bind_prob']).sum()
+ep_new = (df_quotes['new_rate'] * df_quotes['new_bind']).sum()
+print("ΔEP:", ep_new - ep_now)
+
+5b) Schadenauffälligkeiten (Severity-Outlier/Perils)
+import pandas as pd
+
+grp = claims.groupby('peril', as_index=False).agg(
+    cnt=('claim_id','count'),
+    paid=('paid','sum'),
+    reserve=('reserve','sum')
+)
+grp['avg_sev'] = (grp['paid']+grp['reserve'])/grp['cnt']
+print(grp.sort_values('avg_sev', ascending=False).head(10))
+
+5c) Zeit-Drift / Inflation (Severity-Trend)
+
+import pandas as pd, numpy as np
+from sklearn.linear_model import LinearRegression
+
+claims['ym'] = claims['loss_date'].dt.to_period('M').dt.to_timestamp()
+sev = claims.groupby('ym', as_index=False)['paid'].mean().rename(columns={'paid':'avg_paid'})
+X = np.arange(len(sev)).reshape(-1,1)
+mdl = LinearRegression().fit(X, sev['avg_paid'])
+print("Monatlicher Trend:", mdl.coef_[0])
+
+6) Qualität & Effizienz (Prozesssicht – typisch MGA)
+SQL – STP-Quote (Straight-Through-Processing)
+
+SELECT product,
+       SUM(CASE WHEN state='auto_issued' THEN 1 ELSE 0 END)::float / COUNT(*) AS stp_rate
+FROM policies
+WHERE start_date >= CURRENT_DATE - INTERVAL '180 day'
+GROUP BY 1
+ORDER BY stp_rate DESC;
+
+Python – Schadenregulierungsgeschwindigkeit (Time-to-Settle)
+
+import pandas as pd
+claims['t_to_close'] = (claims['settlement_date'] - claims['report_date']).dt.days
+print(claims.groupby('product')['t_to_close'].median().sort_values(ascending=False).head(10))
+
+7) Technische Bausteine zur schnellen Umsetzung
+SQL – Materialized View (Monatswürfel)
+
+CREATE MATERIALIZED VIEW IF NOT EXISTS mv_month_cube AS
+SELECT date_trunc('month', e.period) AS mon,
+       p.product, p.partner, p.channel,
+       SUM(e.earned_exposure) AS exp,
+       SUM(e.earned_premium_net) AS ep_net,
+       SUM(c.paid + COALESCE(c.reserve,0)) AS incurred
+FROM exposures e
+JOIN policies p USING (policy_id)
+LEFT JOIN claims c USING (policy_id)
+GROUP BY 1,2,3,4;
+
+-- Refresh (z. B. täglich)
+REFRESH MATERIALIZED VIEW mv_month_cube;
+
+Python – GLM-Alternative (statsmodels, interpretierbar)
+
+import pandas as pd
+import statsmodels.api as sm
+import statsmodels.formula.api as smf
+
+# Formel: Tweedie (freq*sev), log-Link
+mdl = smf.glm(
+    formula="claim_cost ~ C(baujahr_klasse)+C(plz_zone)+sum_insured+deductible",
+    data=df_raw.assign(offset=np.log(df_raw['earned_exposure'].clip(lower=1e-6))),
+    family=sm.families.Tweedie(var_power=1.5, link=sm.genmod.families.links.log())
+).fit()
+print(mdl.summary())
+
+# Indikationen ableiten
+df_raw['ind_pure'] = np.exp(mdl.predict(df_raw)) / df_raw['earned_exposure'].clip(lower=1e-6)
+
+
+8) Was du im Gespräch hervorheben kannst
+
+Assekuradeur-Spezifik: Nähe zum Markt/Partner, schnelle Tarifanpassung, klare Governance (Zeichnungsvollmachten, 4-Augen-Prinzip), 
+sauberes Datenmodell (Policy–Exposure–Claim), „Burning-Cost ⇒ Indikation ⇒ Marktcheck ⇒ Pricing-Note“.
+
+Auskömmlichkeit: LR/Pure-Prem, Sensitivität (Inflation, Selbstbehalte), Segment-Drivertests, Elasticity-Impact.
+
+Controlling/Dashboard: Monatswürfel, STP-Quote, Time-to-Close, Partner-Factsheets, Ampellogik.
+
+Tooling: SQL für Aggregation, GLM/Tweedie für Pricing, Python für Reports/PowerPoint-Export.
+
+
+
+
+
+Parfait — voilà ce que tu as demandé : le DDL SQL prêt à l’emploi + un script Python (chargement, checks, KPIs, graphiques) pour ton package.
+
+SQL (PostgreSQL/ANSI)
+
+-- Schéma minimal DOMCURA – Wohngebäude (2020–2024)
+CREATE TABLE policies (
+  policy_id        INT PRIMARY KEY,
+  product          TEXT NOT NULL,
+  partner          TEXT,
+  start_date       DATE NOT NULL,
+  end_date         DATE NOT NULL,
+  state            TEXT,
+  sum_insured      INT,
+  deductible       INT,
+  channel          TEXT,
+  premium_gross    NUMERIC,
+  premium_net      NUMERIC
+);
+
+CREATE TABLE exposures (
+  policy_id             INT REFERENCES policies(policy_id),
+  period                DATE NOT NULL,            -- 1er jour du mois
+  earned_exposure       NUMERIC NOT NULL,
+  earned_premium_net    NUMERIC NOT NULL
+);
+
+CREATE TABLE claims (
+  claim_id        INT PRIMARY KEY,
+  policy_id       INT REFERENCES policies(policy_id),
+  loss_date       DATE NOT NULL,
+  report_date     DATE,
+  paid            NUMERIC,
+  reserve         NUMERIC,
+  status          TEXT,                           -- Open / Closed
+  cause           TEXT,
+  peril           TEXT,                           -- Leitungswasser, Sturm/Hagel, ...
+  settlement_date DATE
+);
+
+CREATE TABLE tariff_factors (
+  policy_id     INT REFERENCES policies(policy_id),
+  factor_name   TEXT NOT NULL,
+  factor_level  TEXT NOT NULL
+);
+
+CREATE TABLE market_benchmark (
+  product        TEXT NOT NULL,
+  competitor     TEXT NOT NULL,
+  date           DATE NOT NULL,
+  gross_premium  NUMERIC
+);
+
+-- Indexation utile (KPIs mensuels, jointures rapides)
+CREATE INDEX ix_exposures_policy_period ON exposures (policy_id, period);
+CREATE INDEX ix_claims_policy_loss      ON claims (policy_id, loss_date);
+CREATE INDEX ix_tf_policy               ON tariff_factors (policy_id);
+CREATE INDEX ix_bench_date              ON market_benchmark (product, date);
+
+-- (Optionnel) Vues rapides
+CREATE VIEW v_month_cube AS
+SELECT date_trunc('month', e.period) AS mon,
+       p.product,
+       SUM(e.earned_exposure)       AS exp,
+       SUM(e.earned_premium_net)    AS ep_net,
+       COALESCE(SUM(c.paid),0)      AS paid,
+       COALESCE(SUM(c.reserve),0)   AS reserve,
+       COALESCE(SUM(c.paid)+SUM(c.reserve),0) AS incurred,
+       (COALESCE(SUM(c.paid)+SUM(c.reserve),0) / NULLIF(SUM(e.earned_premium_net),0)) AS loss_ratio
+FROM exposures e
+JOIN policies p USING (policy_id)
+LEFT JOIN claims  c USING (policy_id)
+GROUP BY 1,2;
+
+-- Chargement rapide (dans psql) après extraction du ZIP :
+-- \copy policies         FROM 'domcura_wg_2020_2024_small/policies.csv'         WITH (FORMAT csv, HEADER true);
+-- \copy exposures        FROM 'domcura_wg_2020_2024_small/exposures.csv'        WITH (FORMAT csv, HEADER true);
+-- \copy claims           FROM 'domcura_wg_2020_2024_small/claims.csv'           WITH (FORMAT csv, HEADER true);
+-- \copy tariff_factors   FROM 'domcura_wg_2020_2024_small/tariff_factors.csv'   WITH (FORMAT csv, HEADER true);
+-- \copy market_benchmark FROM 'domcura_wg_2020_2024_small/market_benchmark.csv' WITH (FORMAT csv, HEADER true);
+
+
+Python (Pandas + Matplotlib)
+
+Sauvegarde ce script comme domcura_wg_analysis.py (ou lance-le dans un notebook).
+Il charge tous les CSV, vérifie les volumes, calcule les KPIs clés et produit quelques graphiques.
+
+import os
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+
+# 1) Répertoire d’extraction (ajuste si besoin)
+DATA_DIR = "domcura_wg_2020_2024_small"  # dossier où tu as extrait le ZIP
+
+# 2) Charger les fichiers
+policies = pd.read_csv(os.path.join(DATA_DIR, "policies.csv"), parse_dates=["start_date","end_date"])
+exposures = pd.read_csv(os.path.join(DATA_DIR, "exposures.csv"), parse_dates=["period"])
+claims = pd.read_csv(os.path.join(DATA_DIR, "claims.csv"), parse_dates=["loss_date","report_date","settlement_date"])
+tarf = pd.read_csv(os.path.join(DATA_DIR, "tariff_factors.csv"))
+bench = pd.read_csv(os.path.join(DATA_DIR, "market_benchmark.csv"), parse_dates=["date"])
+indicated = pd.read_csv(os.path.join(DATA_DIR, "indicated_premiums.csv"))
+month_kpis = pd.read_csv(os.path.join(DATA_DIR, "month_kpis.csv"), parse_dates=["mon"])
+
+# 3) Sanity checks
+print("Rows:", {
+    "policies": len(policies), "exposures": len(exposures), "claims": len(claims),
+    "tariff_factors": len(tarf), "benchmark": len(bench),
+    "indicated": len(indicated), "month_kpis": len(month_kpis)
+})
+print("Exposures range:", exposures["period"].min(), "→", exposures["period"].max())
+print("Claims range:", claims["loss_date"].min(), "→", claims["loss_date"].max())
+
+# 4) KPIs globaux (2020–2024)
+ep_net = exposures["earned_premium_net"].sum()
+incurred = claims["paid"].sum() + claims["reserve"].sum()
+lr = incurred / ep_net if ep_net else np.nan
+print(f"Earned Premium (net) = €{ep_net:,.0f}")
+print(f"Incurred (paid+reserve) = €{incurred:,.0f}")
+print(f"Loss Ratio = {lr:.2%}")
+
+# 5) KPIs par année
+exposures["year"] = exposures["period"].dt.year
+claims["year"] = claims["loss_date"].dt.year
+kpi_y = (exposures.groupby("year", as_index=False)
+         .agg(ep_net=("earned_premium_net","sum"))
+         .merge(claims.groupby("year", as_index=False).agg(incurred=("paid","sum")),
+                on="year", how="left")
+         .fillna(0.0))
+kpi_y["loss_ratio"] = kpi_y["incurred"] / kpi_y["ep_net"].replace(0,np.nan)
+print("\nKPIs par année:")
+print(kpi_y)
+
+# 6) Fréquence & sévérité par péril
+clm_cnt = claims.groupby("peril", as_index=False).agg(n=("claim_id","count"), paid=("paid","sum"), reserve=("reserve","sum"))
+clm_cnt["avg_sev"] = (clm_cnt["paid"]+clm_cnt["reserve"]) / clm_cnt["n"].replace(0, np.nan)
+print("\nTop périls par sévérité moyenne:")
+print(clm_cnt.sort_values("avg_sev", ascending=False).head(10))
+
+# 7) Graphiques (Matplotlib pur)
+# 7a) Loss Ratio mensuel
+plt.figure()
+plt.plot(month_kpis["mon"], month_kpis["loss_ratio"])
+plt.title("Loss Ratio mensuel – Wohngebäude (2020–2024)")
+plt.xlabel("Mois"); plt.ylabel("Loss Ratio")
+plt.tight_layout(); plt.show()
+
+# 7b) Distribution des primes indiquées (net)
+plt.figure()
+p = indicated["indicated_net"].clip(upper=indicated["indicated_net"].quantile(0.99))
+plt.hist(p, bins=40)
+plt.title("Distribution des primes nettes indiquées")
+plt.xlabel("€ Indicated Net"); plt.ylabel("Fréquence")
+plt.tight_layout(); plt.show()
+
+# 7c) Sévérité moyenne par péril
+top = clm_cnt.sort_values("avg_sev", ascending=False).head(6)
+plt.figure()
+plt.bar(top["peril"], top["avg_sev"])
+plt.title("Sévérité moyenne par péril")
+plt.xlabel("Péril"); plt.ylabel("€ moyenne sinistre")
+plt.tight_layout(); plt.show()
+
+# 8) Export de tables utiles pour Power BI / Excel
+#   – segments par PLZ-Zone, Baujahr-Klasse (exemple)
+tf_wide = tarf.pivot(index="policy_id", columns="factor_name", values="factor_level").reset_index()
+detail = (policies.merge(exposures.groupby("policy_id", as_index=False)
+                         .agg(ep=("earned_premium_net","sum"), exp=("earned_exposure","sum")),
+                         on="policy_id", how="left")
+                 .merge(claims.groupby("policy_id", as_index=False)
+                         .agg(paid=("paid","sum"), reserve=("reserve","sum")),
+                         on="policy_id", how="left")
+                 .merge(tf_wide, on="policy_id", how="left"))
+detail["incurred"] = detail["paid"].fillna(0)+detail["reserve"].fillna(0)
+detail["lr"] = detail["incurred"]/detail["ep"].replace(0,np.nan)
+detail.to_csv("segment_detail_export.csv", index=False)
+print("\nExport: segment_detail_export.csv (pour Power BI/Excel)")
