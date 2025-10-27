@@ -1,0 +1,9 @@
+Mini-Checkliste (Wortlaut für Gespräch)
+
+Assekuradeur-Edge: schnelle Tarifanpassung, striktes 4-Augen-Prinzip, saubere Data Lineage.
+
+Auskömmlichkeit: Burning Cost → Indikation → Benchmark; Sensitivitäten (Inflation, SB, Region).
+
+Controlling: Monatswürfel, Ampel (LR, ΔInc, ΔEP), STP, Time-to-Close.
+
+Governance: Versionierung Tarifstände/Modelle, Kalibrierung/Backtesting, Drift-Monitoring.
