@@ -11,7 +11,7 @@ invisible(lapply(libs, function(x){
   if(!require(x, character.only=TRUE)) install.packages(x)
   library(x, character.only=TRUE)
 }))
-
+install.packages("kableExtra", type = "source")
 ################################################################################################
 ###################### 1) CASdatasets laden (keine DOMCURA-Dateien) ############################
 ################################################################################################
@@ -177,6 +177,78 @@ ggplot(pred, aes(Sparte, fitted/1000, fill = Sparte)) +
        y = "Ø modellierte Schadenhöhe (Tsd. €)", x = NULL) +
   theme_minimal() +
   theme(legend.position = "none")
+
+## Erweiterter Block 3 — Tarifindikation & Handlungsempfehlung
+################################################################################################
+## 3b) Indikations-Tarif & Handlungsempfehlung
+################################################################################################
+
+# Sicherheits- und Kostenparameter
+safety   <- 1.05   # Sicherheitszuschlag
+expense  <- 0.25   # Verwaltungskosten
+margin   <- 0.05   # Zielmarge
+
+# Vorherige Modellvorhersage (Pure Premium)
+base$pred_pure <- pmax(fitted(mdl), 0)
+
+# Indizierte Nettoprämie
+base <- base %>%
+  mutate(
+    ind_pure = pred_pure,                                     # modellierte reine Prämie
+    ind_net  = ind_pure * safety * (1 + expense + margin),     # Nettoprämie mit Zuschlägen
+    ratio_indicated = ind_net / earned_premium_net,            # Verhältnis Modell / aktuelle Prämie
+    action = case_when(
+      ratio_indicated > 1.1 ~ "Tarif anheben (nicht auskömmlich)",
+      ratio_indicated < 0.9 ~ "Tarif senken (überauskömmlich)",
+      TRUE ~ "Tarif beibehalten (nahe Ziel)"
+    )
+  )
+
+# Übersicht nach Sparten
+tarif_summary <- base %>%
+  group_by(Sparte) %>%
+  summarise(
+    aktueller_Schnitt = mean(earned_premium_net, na.rm=TRUE),
+    indizierter_Schnitt = mean(ind_net, na.rm=TRUE),
+    delta = indizierter_Schnitt - aktueller_Schnitt,
+    Handlung = case_when(
+      delta > 50 ~ "Prämienerhöhung empfohlen",
+      delta < -50 ~ "Prämienreduzierung möglich",
+      TRUE ~ "Tarif stabil halten"
+    ),
+    .groups="drop"
+  )
+
+print(tarif_summary)
+
+# Visualisierung: Indikation vs. aktuelle Prämie
+ggplot(base %>% sample_n(3000),
+       aes(x = earned_premium_net, y = ind_net, color = Sparte)) +
+  geom_point(alpha = 0.6) +
+  geom_abline(intercept = 0, slope = 1, linetype = "dashed", color = "grey40") +
+  labs(
+    title = "Indizierte vs. aktuelle Nettoprämie nach Sparte",
+    x = "Aktuelle Nettoprämie (€)",
+    y = "Indizierte Nettoprämie (€)",
+    color = "Sparte"
+  ) +
+  theme_minimal()
+
+# Export Handlungsempfehlungen
+library(knitr)
+library(kableExtra)
+
+kbl(tarif_summary, digits = 2, caption = "Tarifindikation und Handlungsempfehlungen") %>%
+  kable_styling(full_width = FALSE, bootstrap_options = c("striped", "hover"))
+
+################################################################################################
+## Ergebnis-Interpretation
+################################################################################################
+# 1. Sparten mit positiver Delta (>0): nicht auskömmlich → Prämien erhöhen
+# 2. Sparten mit negativer Delta (<0): überauskömmlich → Prämien senken
+# 3. Aktionstabellen pro Vertrag (base$action) → operative Steuerung oder Produktanpassung
+
+
 
 ################################################################################################
 # 4) Aktuarielles Controlling / Zeitreihen-KPIs ------------------------------------------------

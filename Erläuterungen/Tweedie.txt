@@ -419,3 +419,64 @@ Abschnitt	Inhalt	Bezug zur Aufgabe
 8	Schadenreservierung via Chain-Ladder	„aktuarielles Controlling, Rückstellungen“
 
 Möchtest du, dass ich dir diese finale Version als .R-Datei zum direkten Download exportiere (z. B. DOMCURA_Produktmanagement_Analysis.R)?
+
+
+
+# -----------------------------------------------------------------------------------------------
+# Hilfsfunktion zur Prämienableitung aus Risikofaktoren
+# -----------------------------------------------------------------------------------------------
+# Ziel:
+# Diese Funktion simuliert eine "verdiente Nettoprämie" (earned_premium_net) für jeden Vertrag /
+# jede Beobachtung auf Basis von risikorelevanten Merkmalen wie Risikokategorie, Mitarbeiterzahl
+# und Gebäudeoberfläche.
+# Damit wird ein plausibler Zusammenhang zwischen Risikoprofil und Prämienhöhe hergestellt,
+# wenn keine echten Tarifdaten (z. B. aus Exposures oder Policies) vorliegen.
+#
+# Fachlicher Hintergrund:
+# In der Praxis erfolgt die Tarifkalkulation durch Multiplikation einer Basisprämie
+# mit Risikofaktoren (Relativitäten), die aus aktuariellen Analysen (z. B. GLM) abgeleitet werden.
+# Hier wird dieser Mechanismus synthetisch abgebildet, um den Tarifprozess zu demonstrieren.
+# -----------------------------------------------------------------------------------------------
+
+derive_premium <- function(df, base_prem = 800) {
+  
+  df <- df %>%
+    mutate(
+      # -----------------------------------------------------------------------------------------
+      # 1. Risikoscore-Berechnung:
+      # Der Risikoscore wird aus drei Einflussgrößen gebildet.
+      # Jede Komponente trägt mit einem bestimmten Gewicht zum Gesamtrisiko bei:
+      #   - RiskCateg  : Haupttreiber des Risikos (Gewicht 0.2)
+      #   - NbEmployee : mittlerer Einfluss (Gewicht 0.1)
+      #   - Surface    : geringer Einfluss (Gewicht 0.05)
+      #
+      # Die numerische Umwandlung der Faktorvariablen (as.numeric) dient dazu,
+      # ordinal geordnete Risikostufen linear zu bewerten.
+      # Die Median-Zentrierung sorgt dafür, dass der mittlere Risikoausprägung ≈ 1 entspricht.
+      # -----------------------------------------------------------------------------------------
+      risk_score =
+        1 +
+        0.2 * (as.numeric(RiskCateg) - median(as.numeric(RiskCateg), na.rm = TRUE)) +  # Hauptfaktor
+        0.1 * (as.numeric(NbEmployee) - 3) / 3 +                                      # Sekundärfaktor
+        0.05 * (as.numeric(Surface) - 3) / 3,                                         # Feinfaktor
+      
+      # -----------------------------------------------------------------------------------------
+      # 2. Prämienableitung:
+      # Die verdiente Nettoprämie ergibt sich als Basisprämie (z. B. 800 €)
+      # multipliziert mit dem Risikoscore.
+      # Damit steigen die Prämien mit dem Risikoindex (z. B. alte, große, risikoreiche Gebäude).
+      #
+      # Mit pmax(..., 200) wird sichergestellt, dass keine unrealistisch niedrigen
+      # oder negativen Prämienwerte entstehen (Mindestprämie = 200 €).
+      # -----------------------------------------------------------------------------------------
+      earned_premium_net = pmax(base_prem * risk_score, 200)
+    )
+  
+  # ---------------------------------------------------------------------------------------------
+  # 3. Rückgabe:
+  # Die Funktion gibt den ursprünglichen Datensatz zurück,
+  # ergänzt um die beiden neuen Variablen "risk_score" und "earned_premium_net".
+  # ---------------------------------------------------------------------------------------------
+  df
+}
+
