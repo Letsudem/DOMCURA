@@ -5,18 +5,16 @@
 ################################################################################################
 
 # 0) Pakete laden ------------------------------------------------------------------------------
-#libs <- c("dplyr","tidyr","ggplot2","lubridate","broom",
-#          "tweedie","statmod","ChainLadder","officer","flextable")
+libs <- c("dplyr","tidyr","ggplot2","lubridate","broom","knitr","scales","stringr",
+          "tweedie","statmod","ChainLadder","officer","kableExtra","CASdatasets")
 invisible(lapply(libs, function(x){
   if(!require(x, character.only=TRUE)) install.packages(x)
   library(x, character.only=TRUE)
 }))
-install.packages("kableExtra", type = "source")
+#"flextable"
 ################################################################################################
-###################### 1) CASdatasets laden (keine DOMCURA-Dateien) ############################
+################ 1) CASdatasets laden - künstliche Komposit Portfolio ##########################
 ################################################################################################
-if(!require(CASdatasets)) devtools::install_github("casact/CASdatasets")
-library(CASdatasets)
 
 data(freclaimset3fire9207)
 data(freclaimset3dam9207)
@@ -235,8 +233,6 @@ ggplot(base %>% sample_n(3000),
   theme_minimal()
 
 # Export Handlungsempfehlungen
-library(knitr)
-library(kableExtra)
 
 kbl(tarif_summary, digits = 2, caption = "Tarifindikation und Handlungsempfehlungen") %>%
   kable_styling(full_width = FALSE, bootstrap_options = c("striped", "hover"))
@@ -248,76 +244,234 @@ kbl(tarif_summary, digits = 2, caption = "Tarifindikation und Handlungsempfehlun
 # 2. Sparten mit negativer Delta (<0): überauskömmlich → Prämien senken
 # 3. Aktionstabellen pro Vertrag (base$action) → operative Steuerung oder Produktanpassung
 
+################################################################################################
+# 4) Aktuarielles Controlling / Zeitreihen-KPIs (aus Originaldaten 2002–2007)
+################################################################################################
 
+# ------------------------------------------------------------------------------
+# 1. Ausgangsdaten: Schadenjahre extrahieren
+# Die Datensätze enthalten paid_Y92 ... paid_Y07 -> also Schadenjahre 1992–2007
+# Wir wählen 2002–2007, um ein realistisches jüngeres Zeitfenster zu analysieren.
+# ------------------------------------------------------------------------------
+################################################################################################
+# ZEITREIHEN 2002–2007: Feuer & Sturm  (Kfz separat als Reserving)
+################################################################################################
+
+# --- 1) paid_Yk -> Kalenderjahr (nur Feuer, Sturm) -------------------------------------------
+paid_style_by_year <- function(df, spartenname, end_year = 2007, year_range = 2002:2007) {
+  paid_cols <- grep("^paid_Y\\d+$", names(df), value = TRUE)
+  if (length(paid_cols) == 0) {
+    stop(paste0("Keine 'paid_Y<k>'-Spalten gefunden in ", spartenname, "."))
+  }
+  k_idx <- as.integer(stringr::str_match(paid_cols, "^paid_Y(\\d+)$")[,2])
+  k_max <- max(k_idx, na.rm = TRUE)
+  start_year <- end_year - (k_max - 1)
+  
+  df %>%
+    mutate(.id = dplyr::row_number()) %>%
+    dplyr::select(.id, dplyr::all_of(paid_cols)) %>%
+    tidyr::pivot_longer(dplyr::all_of(paid_cols), names_to = "paid_col", values_to = "Paid") %>%
+    dplyr::mutate(
+      k    = as.integer(stringr::str_match(paid_col, "^paid_Y(\\d+)$")[,2]),
+      Jahr = start_year + (k - 1)
+    ) %>%
+    dplyr::filter(Jahr %in% year_range) %>%
+    dplyr::group_by(Jahr) %>%
+    dplyr::summarise(
+      Incurred = sum(Paid, na.rm = TRUE),
+      N_claims = dplyr::n(),                # simple frequency proxy
+      .groups  = "drop"
+    ) %>%
+    dplyr::mutate(Sparte = spartenname) %>%
+    dplyr::select(Jahr, Sparte, Incurred, N_claims)
+}
+
+# --- 2) Multi-Risk: Peril-Gesamt (ohne Zeit) + optional Imputation ----------------------------
+multi_peril_totals <- function(df, spartenname = "Multi-Risk") {
+  claim_cols <- grep("_Claim$", names(df), value = TRUE)
+  if (length(claim_cols) == 0) stop("Keine *_Claim-Spalten im Multi-Risk-Datensatz gefunden.")
+  df %>%
+    dplyr::select(dplyr::all_of(claim_cols)) %>%
+    tidyr::pivot_longer(dplyr::everything(), names_to = "Peril", values_to = "Paid") %>%
+    dplyr::group_by(Peril) %>%
+    dplyr::summarise(Total_Incurred = sum(Paid, na.rm = TRUE), .groups = "drop") %>%
+    dplyr::mutate(Sparte = spartenname)
+}
+
+multi_impute_by_year <- function(df_multi, by_year_other, year_range = 2002:2007,
+                                 spartenname = "Multi-Risk (imputiert)") {
+  claim_cols <- grep("_Claim$", names(df_multi), value = TRUE)
+  stopifnot(length(claim_cols) > 0)
+  total_multi <- df_multi %>%
+    dplyr::summarise(total = sum(dplyr::across(dplyr::all_of(claim_cols)), na.rm = TRUE)) %>%
+    dplyr::pull(total)
+  
+  w_tbl <- by_year_other %>%
+    dplyr::group_by(Jahr) %>%
+    dplyr::summarise(inc = sum(Incurred, na.rm = TRUE), .groups = "drop") %>%
+    dplyr::filter(Jahr %in% year_range)
+  
+  if (sum(w_tbl$inc, na.rm = TRUE) <= 0) stop("Imputation nicht möglich: Summe Incurred der anderen Sparten ist 0.")
+  
+  w_tbl %>%
+    dplyr::mutate(
+      weight   = inc / sum(inc, na.rm = TRUE),
+      Incurred = total_multi * weight,
+      N_claims = NA_integer_,
+      Sparte   = spartenname
+    ) %>%
+    dplyr::select(Jahr, Sparte, Incurred, N_claims)
+}
+
+# === Anwendung: Feuer & Sturm auf 2002–2007 ===============================================
+ts_fire <- paid_style_by_year(Brand_Explosion_Blitzschlag, "Feuer / Explosion / Blitzschlag")
+ts_dam  <- paid_style_by_year(Sturm_Hagel_Wasser,          "Sturm / Hagel / Wasser")
+
+ts_other_no_kfz <- dplyr::bind_rows(ts_fire, ts_dam)
+
+# Multi-Risk: Peril-Übersicht (ohne Zeit) + optional Imputation auf 2002–2007
+multi_peril <- multi_peril_totals(Feuer_Wasser_Sturm_Diebstahl_Glasbruch)
+ts_multi_imp <- multi_impute_by_year(Feuer_Wasser_Sturm_Diebstahl_Glasbruch, ts_other_no_kfz)
+
+# Gemeinsame Zeitreihe (ohne Kfz, Multi imputiert)
+ts_all_no_kfz <- dplyr::bind_rows(ts_other_no_kfz, ts_multi_imp) %>%
+  dplyr::group_by(Jahr, Sparte) %>%
+  dplyr::summarise(Total_Incurred = sum(Incurred, na.rm = TRUE),
+                   N_claims = suppressWarnings(sum(N_claims, na.rm = TRUE)),
+                   .groups = "drop")
+
+# PLOT: Zeitreihe 2002–2007 für Feuer, Sturm (+ Multi imputiert)
+ggplot(ts_all_no_kfz, aes(Jahr, Total_Incurred/1e6, color = Sparte)) +
+  geom_line(linewidth = 1.1) + geom_point(size = 2) +
+  scale_x_continuous(breaks = 2002:2007, limits = c(2002, 2007)) +
+  labs(title = "Schadenaufwand je Sparte (2002–2007)",
+       subtitle = "Multi-Risk zeitlich imputiert proportional zu Feuer & Sturm (Kfz separat als Reserving)",
+       y = "Incurred (Mio. €)", x = "Schadenjahr") +
+  theme_minimal(base_size = 13)
+
+ggplot(multi_peril, aes(x = reorder(Peril, -Total_Incurred), y = Total_Incurred/1e6)) +
+  geom_col(alpha = 0.9) +
+  coord_flip() +
+  labs(title = "Multi-Risk: Peril-Aufschlüsselung (Gesamt)",
+       y = "Incurred (Mio. €)", x = "Peril") +
+  theme_minimal(base_size = 13)
 
 ################################################################################################
-# 4) Aktuarielles Controlling / Zeitreihen-KPIs ------------------------------------------------
+# KfZ-HAFTPFLICHT: RESERVING-CONTROLLING (Mack-Chain-Ladder)
 ################################################################################################
-base <- base %>%
-  mutate(mon = sample(seq(as.Date("2020-01-01"), as.Date("2024-12-01"), by="month"), nrow(base), TRUE))
-month_kpi <- base %>%
-  group_by(mon) %>%
-  summarise(ep=sum(earned_premium_net), inc=sum(incurred),
-            lr=inc/ep, .groups="drop")
 
-ggplot(month_kpi, aes(mon, lr)) +
-  geom_line(color="#00a075") + 
-  labs(title="Monatliche Schadenquote – Wohngebäude (simuliert)", x=NULL, y="Loss Ratio")
+# Ziel: IBNR, Ultimate, Mack S.E., CV je Unfalljahr; Fokus 2002–2007
+
+# Hilfsfunktionen ---------------------------------------------------------------
+is_cumulative_triangle <- function(tri) {
+  # TRUE, wenn jede Zeile entlang der Entwicklungsachsen nicht fallend ist
+  all(apply(as.matrix(tri), 1, function(r) {
+    x <- stats::na.omit(as.numeric(r))
+    if (length(x) <= 1) TRUE else all(diff(x) >= 0)
+  }))
+}
+
+latest_cumulative_by_row <- function(tri) {
+  apply(as.matrix(tri), 1, function(r) {
+    x <- stats::na.omit(as.numeric(r))
+    if (length(x) == 0) NA_real_ else tail(x, 1)
+  })
+}
+
+# 1) Triangle bereitstellen -----------------------------------------------------
+kfz_tri <- tryCatch({
+  if (inherits(Kfz_Haftpflicht, "triangle")) {
+    Kfz_Haftpflicht
+  } else {
+    ChainLadder::as.triangle(Kfz_Haftpflicht)
+  }
+}, error = function(e) NULL)
+
+if (is.null(kfz_tri)) {
+  stop(paste0(
+    "Kfz_Haftpflicht konnte nicht in ein Triangle umgewandelt werden.\n",
+    "Vorhandene Spalten (Auszug): ", paste(head(names(Kfz_Haftpflicht), 30), collapse = ", "), " ..."
+  ))
+}
+
+# 2) Falls inkremental, auf kumulativ umstellen --------------------------------
+if (!is_cumulative_triangle(kfz_tri)) {
+  kfz_tri <- ChainLadder::incr2cum(kfz_tri)
+}
+
+# 3) Mack-Chain-Ladder laufen lassen ------------------------------------------
+mcl <- ChainLadder::MackChainLadder(kfz_tri, est.sigma = "Mack")
+
+completed <- mcl$FullTriangle                 # vervollständigt kumulativ
+latest    <- latest_cumulative_by_row(kfz_tri)
+
+AY        <- suppressWarnings(as.numeric(rownames(completed)))
+Ultimate  <- as.numeric(completed[, ncol(completed)])
+Latest    <- as.numeric(latest)
+IBNR      <- Ultimate - Latest
+
+# Mack-Standardfehler & CV je AY (falls verfügbar)
+SE_by_AY <- tryCatch({
+  se_mat <- mcl$Mack.S.E
+  if (is.null(se_mat)) rep(NA_real_, length(AY)) else as.numeric(se_mat[, ncol(se_mat)])
+}, error = function(e) rep(NA_real_, length(AY)))
+
+CV_by_AY <- ifelse(!is.na(SE_by_AY) & Ultimate != 0, SE_by_AY / Ultimate, NA_real_)
+
+kfz_res_control <- data.frame(
+  AY = AY,
+  Latest = Latest,
+  Ultimate = Ultimate,
+  IBNR = IBNR,
+  Mack_SE = SE_by_AY,
+  CV = CV_by_AY
+)
+
+# 4) Auf 2002–2007 filtern -----------------------------------------------------
+kfz_res_2002_2007 <- kfz_res_control %>% dplyr::filter(AY >= 2002 & AY <= 2007)
+
+# 5) Ausgabe & Plots -----------------------------------------------------------
+print(kfz_res_2002_2007)
+
+ggplot(kfz_res_2002_2007, aes(x = AY, y = IBNR/1e6)) +
+  geom_col() +
+  scale_x_continuous(breaks = 2002:2007) +
+  labs(title = "Kfz-Haftpflicht: IBNR je Unfalljahr (Mack)",
+       subtitle = "AY 2002–2007",
+       x = "Unfalljahr (AY)", y = "IBNR (Mio. €)") +
+  theme_minimal(base_size = 13)
+
+ggplot(kfz_res_2002_2007, aes(x = AY)) +
+  geom_line(aes(y = Ultimate/1e6), linewidth = 1.1) +
+  geom_line(aes(y = Latest/1e6), linetype = "dashed") +
+  scale_x_continuous(breaks = 2002:2007) +
+  labs(title = "Kfz-Haftpflicht: Ultimate vs. Latest (Mack)",
+       subtitle = "Vollentwicklung (durchgezogen) vs. aktuell beobachtet (gestrichelt)",
+       x = "Unfalljahr (AY)", y = "Schaden kumulativ (Mio. €)") +
+  theme_minimal(base_size = 13)
+
+ggplot(kfz_res_2002_2007, aes(x = AY, y = CV)) +
+  geom_point(size = 2) + geom_line() +
+  scale_x_continuous(breaks = 2002:2007) +
+  scale_y_continuous(labels = scales::percent_format(accuracy = 1)) +
+  labs(title = "Kfz-Haftpflicht: Mack-Unsicherheit (CV) je Unfalljahr",
+       x = "Unfalljahr (AY)", y = "CV (Mack S.E. / Ultimate)") +
+  theme_minimal(base_size = 13)
 
 ################################################################################################
 # 5) Partner- und Portfolio-Analysen -----------------------------------------------------------
 ################################################################################################
-partner_tbl <- base %>%
-  mutate(partner=sample(paste("Partner",1:8), nrow(base), TRUE)) %>%
-  group_by(partner) %>%
-  summarise(policies=n(), ep=sum(earned_premium_net),
-            inc=sum(incurred), lr=inc/ep,
-            avg_sum=mean(sum_insured), .groups="drop") %>%
-  arrange(desc(ep))
-partner_tbl
+
+# realen Vertriebspartner (z. B. Vermittler-ID, Maklergruppe, Kooperation) vorhandeln.
 
 ################################################################################################
 # 6) Reporting & Präsentationen (PowerPoint) ---------------------------------------------------
 ################################################################################################
-doc <- read_pptx()
-doc <- add_slide(doc, layout="Title and Content", master="Office Theme")
-doc <- ph_with(doc, "Aktuarielle Analyse – Wohngebäude (Beispieldaten)", 
-               location=ph_location_type("title"))
-ft <- flextable(partner_tbl)
-doc <- ph_with(doc, value=ft, location=ph_location_type("body"))
-print(doc, target="DOMCURA_Report_OpenData.pptx")
+# sehe datei Präsentation
 
 ################################################################################################
 # 7) Ad-hoc-Analysen & Sensitivität ------------------------------------------------------------
 ################################################################################################
-uplift <- 0.04; elasticity <- -0.9
-df_quotes <- data.frame(
-  quoted_premium = runif(3000, 400, 1200),
-  bind_prob = runif(3000, 0.1, 0.5),
-  expected_cost = runif(3000, 200, 800)
-) %>%
-  mutate(new_prem = quoted_premium*(1+uplift),
-         new_bind = pmin(pmax(bind_prob*(1+elasticity*uplift), 0), 1))
-
-EP_now  <- sum(df_quotes$quoted_premium * df_quotes$bind_prob)
-EP_new  <- sum(df_quotes$new_prem * df_quotes$new_bind)
-Cost_now<- sum(df_quotes$expected_cost * df_quotes$bind_prob)
-Cost_new<- sum(df_quotes$expected_cost * df_quotes$new_bind)
-
-delta <- list(
-  dEP = EP_new-EP_now,
-  dCost = Cost_new-Cost_now,
-  dTechER = (EP_new-Cost_new) - (EP_now-Cost_now)
-)
-print(delta)
-
-################################################################################################
-# 8) Schadenreservierung (Claim Triangle – Kfz-Haftpflicht) ------------------------------------
-################################################################################################
-tri_tpl <- as.triangle(Kfz_Haftpflicht)
-mack <- MackChainLadder(tri_tpl)
-summary(mack)
-plot(mack, main="Kfz-Haftpflicht – Reserveschätzung (Mack-Modell)")
 
 ################################################################################################
 # Ende ------------------------------------------------------------------------------------------

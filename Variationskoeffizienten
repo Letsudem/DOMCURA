@@ -1,0 +1,38 @@
+CV steht für Coefficient of Variation, also den Variationskoeffizienten.
+
+Mathematisch:
+
+CV =Standardfehler/ schätzwert
+
+📐 Interpretation im Reserving
+Größe	Bedeutung
+Ultimate	Erwarteter (prognostizierter) Gesamtschaden je Unfalljahr (nach vollständiger Entwicklung).
+Mack SE	Standardfehler des Ultimate – misst die statistische Unsicherheit der Prognose.
+CV	Verhältnis von Unsicherheit zu Schätzwert – Relatives Risiko oder Unsicherheitsquote.
+📈 Typische Werte & Bedeutung
+CV-Wert	Interpretation	Aktuarische Bedeutung
+< 5 %	sehr stabil	hohe Datendichte, geringe Unsicherheit
+5–15 %	moderat	normale Schwankung, übliche Modellunsicherheit
+> 20 %	hoch	Unsicherheit groß → evtl. volatiles Jahr, wenige Schäden oder späte Meldungen
+> 30 %	sehr hoch	Reserving-Ergebnis stark unsicher (z. B. frisches AY mit langer Nachentwicklung)
+🔍 Beispiel (aus deinem Kfz-Reserving)
+
+Wenn du z. B. siehst:
+
+AY	Ultimate (€ Mio.)	Mack SE (€ Mio.)	CV
+2002	45.2	2.1	4.6 %
+2006	27.8	5.8	20.9 %
+
+Dann heißt das:
+
+2002: Prognose ist stabil, sehr geringe Unsicherheit.
+
+2006: Prognose unsicher, da Schadenjahr noch nicht „ausentwickelt“ (wenig Beobachtungen, späte Meldungen → IBNR größer → SE relativ hoch).
+
+🧠 Aktuarische Nutzung
+
+CV wird in Reserving Reports / ORSA-Analysen zur Beurteilung der Modellunsicherheit verwendet.
+
+Hohe CVs → Indikator für stärkere Schwankungen der Rückstellungs- oder IBNR-Schätzung.
+
+Aggregiert über alle AYs → Grundlage für Risikozuschläge oder Stabilitätsbewertungen.
