@@ -250,7 +250,7 @@ und führen danach den Tweedie-GLM aus.
 
 ✅ Aktualisierte Version des Codes (funktioniert mit deinen Datenspalten)
 ################################################################################################
-## 3) Tarifentwicklung & Auskömmlichkeit (mit echten Spalten aus CASdatasets)
+## 3) Tarifentwicklung & Auskömmlichkeit 
 ################################################################################################
 
 # 1️⃣ Feuer: Paid-Summen über alle Zahlungsjahre

@@ -30,6 +30,7 @@ Kfz_Haftpflicht                        <- fretri1TPL9207
 str(Brand_Explosion_Blitzschlag)
 str(Sturm_Hagel_Wasser)
 str(Feuer_Wasser_Sturm_Diebstahl_Glasbruch)
+str(Kfz_Haftpflicht)
 
 ################################################################################################
 ######################## 2) Explorative Analyse – Spartenvergleich #############################
@@ -81,48 +82,68 @@ ggplot(EDA_tbl, aes(x = Sparte, y = avg_paid/1000, fill = Sparte)) +
   theme(legend.position = "none")
 
 ################################################################################################
-## 3) Tarifentwicklung & Auskömmlichkeit (mit echten Spalten aus CASdatasets)
+## 3) Tarifentwicklung & Auskömmlichkeit (deterministisch abgeleitete Prämien + Tweedie GLM)
 ################################################################################################
 
-# Feuer: Paid-Summen über alle Zahlungsjahre
+# Hilfsfunktion zur Prämienableitung aus Risikofaktoren -------------------------
+derive_premium <- function(df, base_prem = 800) {
+  df <- df %>%
+    mutate(
+      risk_score =
+        1 +
+        0.2 * (as.numeric(RiskCateg) - median(as.numeric(RiskCateg), na.rm = TRUE)) +
+        0.1 * (as.numeric(NbEmployee) - 3) / 3 +
+        0.05 * (as.numeric(Surface) - 3) / 3,
+      earned_premium_net = pmax(base_prem * risk_score, 200)
+    )
+  df
+}
+
+# Feuer: Summe über paid_Y*-Spalten
 Brand_Explosion_Blitzschlag <- Brand_Explosion_Blitzschlag %>%
   mutate(incurred = rowSums(select(., starts_with("paid_Y")), na.rm = TRUE),
-         baujahr_klasse = RiskCateg,                         # Beispielmerkmal
-         region = NbSite,                                    # Beispielmerkmal
-         earned_exposure = 1,
-         earned_premium_net = runif(n(), 400, 1200))         # synthetische Prämien
+         baujahr_klasse = RiskCateg,
+         region = NbSite,
+         earned_exposure = 1) %>%
+  derive_premium()
 
-# Sturm: Paid-Summen über alle Zahlungsjahre
+# Sturm: Summe über paid_Y*-Spalten
 Sturm_Hagel_Wasser <- Sturm_Hagel_Wasser %>%
   mutate(incurred = rowSums(select(., starts_with("paid_Y")), na.rm = TRUE),
          baujahr_klasse = RiskCateg,
          region = NbSite,
-         earned_exposure = 1,
-         earned_premium_net = runif(n(), 400, 1200))
+         earned_exposure = 1) %>%
+  derive_premium()
 
-# Multi: Gesamtschaden über alle *_Claim-Spalten
+# Multi: Summe über alle *_Claim-Spalten
 Feuer_Wasser_Sturm_Diebstahl_Glasbruch <- Feuer_Wasser_Sturm_Diebstahl_Glasbruch %>%
   mutate(incurred = rowSums(select(., ends_with("_Claim")), na.rm = TRUE),
          baujahr_klasse = Damage_Revenue,
          region = Damage_Sites,
-         earned_exposure = 1,
-         earned_premium_net = runif(n(), 400, 1200))
+         earned_exposure = 1) %>%
+  mutate(
+    risk_score =
+      1 +
+      0.3 * (as.numeric(Damage_Revenue) - 2) / 2 +
+      0.2 * (as.numeric(Damage_Sites) - 2) / 2
+  ) %>%
+  mutate(earned_premium_net = pmax(800 * risk_score, 200))
 
-# Gemeinsamer Datensatz aller Sparten
+# Zusammenführen aller Sparten
 base <- bind_rows(
   mutate(Brand_Explosion_Blitzschlag, Sparte = "Feuer"),
   mutate(Sturm_Hagel_Wasser, Sparte = "Sturm"),
   mutate(Feuer_Wasser_Sturm_Diebstahl_Glasbruch, Sparte = "Multi")
 )
 
-# Kennzahlen auf Policenebene
+# Berechnung der Schaden- und Prämienkennzahlen
 base <- base %>%
   mutate(
     pure_premium = incurred / earned_exposure,
     loss_ratio   = incurred / earned_premium_net
   )
 
-#################################### Burning-Cost-Analyse  ##############################################
+###################################### Burning-Cost-Analyse ###########################
 burning <- base %>%
   group_by(Sparte, baujahr_klasse) %>%
   summarise(exp = sum(earned_exposure),
@@ -132,17 +153,20 @@ burning <- base %>%
             lr   = inc/ep, .groups = "drop")
 print(burning)
 
-###################################    GLM/Tweedie  #####################################################
+###################### Tweedie-GLM: modellierte reine Schadenhöhe #####################
+
 fml <- as.formula(
-  "pure_premium ~ factor(Sparte) + factor(baujahr_klasse) + factor(region)"
+  "pure_premium ~ factor(Sparte) + factor(baujahr_klasse) +
+                   factor(region) + earned_premium_net"
 )
+
 mdl <- glm(fml, data = base,
            family = tweedie(var.power = 1.5, link.power = 0),
            weights = earned_exposure)
+
 summary(mdl)
 
-################################# Visualisierung der Modellwerte  #######################################
-library(ggplot2)
+###################### Visualisierung der modellierten Schadenhöhe ####################
 pred <- data.frame(
   Sparte = base$Sparte,
   fitted = fitted(mdl)
@@ -153,7 +177,6 @@ ggplot(pred, aes(Sparte, fitted/1000, fill = Sparte)) +
        y = "Ø modellierte Schadenhöhe (Tsd. €)", x = NULL) +
   theme_minimal() +
   theme(legend.position = "none")
-
 
 ################################################################################################
 # 4) Aktuarielles Controlling / Zeitreihen-KPIs ------------------------------------------------
