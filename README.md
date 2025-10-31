@@ -1,10 +1,9 @@
 ---
-title: "README.md"
+title: "Aktuarielle Analytik"
 Erfasser: "Serges Letsudem Wonanke"
 Datum: "2025-11-06"
 Für: DOMCURA AG
 ---
-
 
 ## Mathematik im Bereich Produktmanager
 
