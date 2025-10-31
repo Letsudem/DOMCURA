@@ -33,7 +33,7 @@ invisible(lapply(libs, function(x){
 ################################################################################################
 
 ################################################################################################
-################ 1) CASdatasets laden - Multi-Risk-Komposit ####################################
+## 1) CASdatasets laden - Multi-Risk-Komposit
 ################################################################################################
 data(freclaimset3multi9207)
 df_multi <- freclaimset3multi9207
@@ -43,7 +43,7 @@ str(df_multi[, c(grep("_Claim$", names(df_multi), value=TRUE),
                  "Occur","Damage_Revenue","Damage_Sites")])
 
 ################################################################################################
-################ 2) Explorative Analyse – Gefahrenarten-Übersicht & Zeitverlauf ################
+## 2) Explorative Analyse – Gefahrenarten-Übersicht & Zeitverlauf
 ################################################################################################
 
 # 2a) Boxplot aller *_Claim-Spalten (log-Skala)
@@ -408,7 +408,7 @@ knitr::kable(portfolio_region, digits = 2, caption = "Portfolio-Performance nach
   kableExtra::kable_styling(full_width = FALSE, bootstrap_options = c("striped", "hover"))
 
 ################################################################################################
-## 5) Ergebnis-Interpretation (nur Multi)
+## 6) Ergebnis-Interpretation (nur Multi)
 ################################################################################################
 # 1) delta > 0  -> nicht auskömmlich → Prämien erhöhen
 # 2) delta < 0  -> überauskömmlich → Prämien senken
